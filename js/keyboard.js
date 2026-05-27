@@ -1,299 +1,407 @@
-// ===================================================
-// [키보드 세션 모듈] js/keyboard.js
-// ===================================================
+// ============================================
+// 게임 설정 (공통)
+// ============================================
+const keyboardLANE_COUNT = 8;
+let keyboardLANE_WIDTH = 80;
+let keyboardTRACK_X_OFFSET = -100; 
+let keyboardJUDGE_LINE_Y_OFFSET = 120;
+let keyboardNOTE_HEIGHT = 15;
+let keyboardNOTE_WIDTH = 70;
+let keyboardSCROLL_SPEED = 200;
 
-// 🎛️ 게임 설정 (키보드 고유 변수로 분리)
-const KEYBOARD_CONFIG = {
-  LANE_COUNT: 8,
-  LANE_WIDTH: 80,
-  TRACK_X_OFFSET: -100,      // 트랙을 중앙에 배치하기 위한 좌측 오프셋
-  JUDGE_LINE_Y_OFFSET: 120,
-  NOTE_HEIGHT: 15,
-  NOTE_WIDTH: 70,
-  SCROLL_SPEED: 200,
-  AUDIO_OFFSET: -100
-};
+let keyboardAUDIO_OFFSET = -100; 
 
-// 🎨 판정 피드백 및 이펙트 색상 설정
-const KEYBOARD_COLOR = {
-  BACKGROUND: [15, 15, 25],
-  PERFECT: [255, 255, 100],
-  GOOD: [100, 255, 100],
-  BAD: [255, 150, 100],
-  NOTE_NORMAL: [0, 230, 255], // 키보드만의 청량한 네온 블루 색상
-};
-
-// 인게임 전역 변수
 let keyboardNotes = [];
-let keyboardCurrentTime = 0; // main.js의 globalSongTime과 동기화
+let keyboardCurrentTime = 0;
 let keyboardJudgeLine;
-let keyboardScore = 0;
-let keyboardCombo = 0;
-let keyboardMaxCombo = 0;
-let keyboardComboScale = 1.0;
+let keyboardFont; 
+let keyboardIsGameStarted = false; 
 
+let keyboardJumpStartTime = 0;       
+let keyboardTargetStartTimeSec = 0;  
+
+//==========================================BPM
+let keyboardGameBPM = 126;
+
+// 판정 피드백 시스템
 let keyboardLastJudgment = null;
 let keyboardJudgmentTime = 0;
+
+// 이펙트 시스템
 let keyboardHitEffects = [];
 let keyboardKeyPressEffects = [];
 
-// 외부 폰트/에셋 연동을 위한 함수
+// ============================================
+// 스코어, 콤보 및 웹캠 변수
+// ============================================
+let keyboardScore = 0;
+let keyboardCombo = 0;
+let keyboardMaxCombo = 0;
+let keyboardComboScale = 1.0; 
+let keyboardVideo; 
+
+// BPM 설정
+function keyboardSetGameBPM(bpm) {
+  keyboardGameBPM = bpm;
+}
+
+// 비트를 시간(초)으로 변환 
+function keyboardBeatToTime(beat) {
+  return (beat * 60) / keyboardGameBPM;
+}
+
+// ============================================
+// 초기화 및 채보 제작
+// ============================================
 function keyboardPreload() {
-  // 메인 main.js의 preload 단계에서 호출됩니다.
-  // 만약 키보드 고유의 폰트나 리소스가 필요하다면 여기에 작성합니다.
+  // try {
+  //   keyboardFont = loadFont('Paperlogy-7Bold.ttf');
+  // } catch(e) {
+  //   console.log("기본 폰트로 대체합니다.");
+  // }
 }
 
-// ============================================
-// ⚙️ 1. 메인 세업에서 호출될 키보드 초기화 함수
-// ============================================
 function keyboardSetup() {
-  // 판정선 Y축 위치 계산
-  keyboardJudgeLine = height - KEYBOARD_CONFIG.JUDGE_LINE_Y_OFFSET;
+  createCanvas(windowWidth, windowHeight);
+  keyboardUpdateGameScale();
+  if (keyboardFont) textFont(keyboardFont);
   
-  // 키 프레스 효과 배열 초기화
-  for (let i = 0; i < KEYBOARD_CONFIG.LANE_COUNT; i++) {
-    keyboardKeyPressEffects.push(false);
+  keyboardCreateChart();
+
+  // 카메라 초기화 및 캔버스 뒤 DOM 숨김 처리
+  keyboardVideo = createCapture(VIDEO);
+  keyboardVideo.hide(); 
+}
+
+function keyboardWindowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  keyboardUpdateGameScale();
+}
+
+function keyboardUpdateGameScale() {
+  let trackWidth = min(windowWidth * 0.75, 800); 
+  if (trackWidth < 450) trackWidth = windowWidth; 
+  
+  keyboardLANE_WIDTH = trackWidth / keyboardLANE_COUNT;
+  keyboardNOTE_WIDTH = keyboardLANE_WIDTH * 0.85;
+  
+  keyboardTRACK_X_OFFSET = (windowWidth - trackWidth) / 2; 
+  
+  keyboardJUDGE_LINE_Y_OFFSET = windowHeight * 0.2;
+  keyboardJudgeLine = windowHeight - keyboardJUDGE_LINE_Y_OFFSET;
+  keyboardNOTE_HEIGHT = windowHeight * 0.02;
+  keyboardSCROLL_SPEED = windowHeight * 0.6; 
+}
+
+function keyboardMousePressed() {
+  if (!keyboardIsGameStarted) {
+    keyboardIsGameStarted = true;
+    return;
   }
-  
-  // 📝 [임시 테스트용] 샘플 노트 생성 로직 
-  // 실제 채보 파일이 완성되면 이 부분을 채보 생성 함수로 대체하면 됩니다.
-  generateKeyboardSampleNotes();
+
+  if (mouseX > 0 && mouseX < width && mouseY > 0 && mouseY < height) {
+    let fs = fullscreen();
+    fullscreen(!fs);
+  }
 }
 
 // ============================================
-// 🎨 2. 메인 draw()에서 반복 호출될 루프 함수
+// [박자 직관화] 1박자(4분음표) = 1.0 기준 채보 시스템
+// ============================================
+function keyboardCreateChart() {
+  keyboardSetGameBPM(126); 
+  
+  keyboard_n(5, 4.0);
+  keyboard_n(5, 5.0);
+  keyboard_n(5, 6.0);
+  keyboard_n(6, 6.5);
+  keyboard_n(5, 7.0);
+  keyboard_h(4, 7.5, 0.5);
+  keyboard_h(4, 8.5, 0.5);
+  keyboard_h(4, 9.5, 0.5);
+  keyboard_n(6, 10.5);
+  keyboard_n(5, 12.0);
+  keyboard_n(5, 13.0);
+  keyboard_n(5, 14.0);
+  keyboard_n(6, 14.5);
+  keyboard_n(5, 15.0);
+  keyboard_h(4, 15.5, 1.5);
+  keyboard_h(3, 17.0, 1.0);
+  keyboard_h(2, 18.0, 1.0);
+  keyboard_h(1, 19.0, 1.0);
+  keyboard_h(2, 20.0, 2.0);
+  keyboard_n(1, 23.0);
+  keyboard_n(2, 24.0);
+  keyboard_n(3, 24.5);
+  keyboard_n(4, 25.0);
+  keyboard_n(1, 25.5);
+  keyboard_h(2, 28.0, 1.0);
+  keyboard_h(3, 29.0, 1.0);
+  keyboard_h(4, 30.0, 1.0);
+  keyboard_h(5, 31.0, 1.0);
+  keyboard_h(6, 32.0, 2.0);
+  
+  // 41마디 이후 채보 영역
+  keyboard_n(2, 166.0);
+  keyboard_n(4, 166.5);
+  keyboard_n(5, 167.0);
+  keyboard_n(6, 167.5);
+  keyboard_n(5, 168.5);
+  keyboard_n(4, 169.5);
+  keyboard_n(3, 170.0);
+  keyboard_n(4, 170.5);
+  keyboard_n(4, 174.0);
+  keyboard_n(4, 174.5);
+  keyboard_n(4, 175.0);
+  keyboard_n(4, 175.5);
+  keyboard_n(4, 176.5);
+  keyboard_n(5, 177.5);
+  keyboard_n(4, 178.0);
+  keyboard_n(2, 178.5);
+  keyboard_n(2, 181.0);
+  keyboard_n(3, 181.5);
+  keyboard_n(4, 182.0);
+  keyboard_n(7, 183.0);
+  keyboard_n(7, 183.5);
+  keyboard_n(6, 184.5);
+}
+
+// 단노트 생성 함수 (1박자 = 1.0 기준)
+function keyboard_n(lane, beat) {
+  keyboardNotes.push({
+    type: 'short',
+    time: keyboardBeatToTime(beat) * 1000, 
+    lane: lane,
+    active: true,
+    missed: false
+  });
+}
+
+// 롱노트 생성 함수
+function keyboard_h(lane, startBeat, lengthBeat) {
+  let endBeat = startBeat + lengthBeat;
+  keyboardNotes.push({
+    type: 'hold',
+    time: keyboardBeatToTime(startBeat) * 1000,
+    endTime: keyboardBeatToTime(endBeat) * 1000,
+    lane: lane,
+    active: true,
+    missed: false,
+    headHit: false, 
+    holding: false  
+  });
+}
+
+// ============================================
+// 게임 루프 및 렌더링
 // ============================================
 function keyboardDraw() {
-  // 메인 마스터 시계 동기화
-  keyboardCurrentTime = globalSongTime + KEYBOARD_CONFIG.AUDIO_OFFSET;
+  background(20);
   
-  // 판정선 위치 화면 리사이즈 대응
-  keyboardJudgeLine = height - KEYBOARD_CONFIG.JUDGE_LINE_Y_OFFSET;
-
-  // 그래픽 렌더링 시작
-  drawKeyboardLanes();
-  drawKeyboardNotes();
-  drawKeyboardEffects();
-  drawKeyboardUI();
-}
-
-// ============================================
-// 🖼️ UI 및 그래픽 렌더링 함수들
-// ============================================
-function drawKeyboardLanes() {
-  let totalWidth = KEYBOARD_CONFIG.LANE_COUNT * KEYBOARD_CONFIG.LANE_WIDTH;
-  let startX = width / 2 - totalWidth / 2 + KEYBOARD_CONFIG.TRACK_X_OFFSET;
-  
-  // 8개 레인 그리기
-  for (let i = 0; i < KEYBOARD_CONFIG.LANE_COUNT; i++) {
-    let x = startX + i * KEYBOARD_CONFIG.LANE_WIDTH;
-    
-    // 키를 누르고 있을 때의 레인 하이라이트 이펙트
-    if (keyboardKeyPressEffects[i]) {
-      fill(255, 255, 255, 35);
-      noStroke();
-      rect(x, 0, KEYBOARD_CONFIG.LANE_WIDTH, keyboardJudgeLine);
-    }
-    
-    // 레인 경계선
-    stroke(255, 255, 255, 30);
-    strokeWeight(1);
-    line(x, 0, x, keyboardJudgeLine);
-    line(x + KEYBOARD_CONFIG.LANE_WIDTH, 0, x + KEYBOARD_CONFIG.LANE_WIDTH, keyboardJudgeLine);
+  if (!keyboardIsGameStarted) {
+    fill(255);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(max(16, width * 0.02));
+    text("화면을 클릭하면 음악과 함께 게임이 시작됩니다.", width / 2, height / 2);
+    return;
   }
   
-  // 판정선 (Judge Line)
-  stroke(255, 50, 100, 200);
-  strokeWeight(4);
-  line(startX, keyboardJudgeLine, startX + totalWidth, keyboardJudgeLine);
+  // 메인 시스템 연동 타이머
+  keyboardCurrentTime = globalTime;
+  
+  // 1. 사이드 배경 UI 렌더링
+  keyboardDrawCustomLeftUI();  
+  keyboardDrawCustomRightUI(); 
+  
+  // 2. 게임 플레이 영역 배경
+  keyboardDrawBeatLines();
+  keyboardDrawLanes();
+  
+  // 3. 게임 노트 렌더링
+  keyboardDrawNotes();
+  
+  // 4. 피아노 건반 및 키 입력 이펙트
+  keyboardDrawWhiteKeys();       
+  keyboardDrawKeyPressEffects(); 
+  keyboardDrawBlackKeys();       
+  
+  // 5. 판정선 및 상위 이펙트 시스템
+  keyboardDrawJudgmentLine();
+  keyboardCheckMissedNotes();
+  keyboardDrawHitEffects();      
+  keyboardDrawInfo();
 }
 
-function drawKeyboardNotes() {
-  let totalWidth = KEYBOARD_CONFIG.LANE_COUNT * KEYBOARD_CONFIG.LANE_WIDTH;
-  let startX = width / 2 - totalWidth / 2 + KEYBOARD_CONFIG.TRACK_X_OFFSET;
+function keyboardDrawCustomLeftUI() {
+  let uiWidth = keyboardTRACK_X_OFFSET - 10;
+  if (uiWidth <= 0) return;
+
+  fill(15, 15, 25);
+  noStroke();
+  rect(0, 0, uiWidth, height);
   
+  stroke(0, 230, 255, 40);
+  strokeWeight(2);
+  line(uiWidth, 0, uiWidth, height);
+
+  textAlign(CENTER, CENTER);
+  
+  fill(0, 230, 255, 150);
+  textSize(max(12, uiWidth * 0.1));
+  text("SCORE", uiWidth / 2, height * 0.2);
+  
+  fill(255);
+  textSize(max(18, uiWidth * 0.14));
+  text(nf(keyboardScore, 6), uiWidth / 2, height * 0.25);
+
+  if (keyboardCombo > 0) {
+    keyboardComboScale = lerp(keyboardComboScale, 1.0, 0.1); 
+    
+    push();
+    translate(uiWidth / 2, height * 0.45);
+    scale(keyboardComboScale);
+    
+    fill(255, 200, 0, 30);
+    textSize(max(24, uiWidth * 0.28));
+    text(keyboardCombo, 0, 0);
+    
+    fill(255, 215, 0);
+    textSize(max(22, uiWidth * 0.25));
+    text(keyboardCombo, 0, -2);
+    pop();
+
+    fill(200, 200, 200);
+    textSize(max(11, uiWidth * 0.09));
+    text("COMBO", uiWidth / 2, height * 0.53);
+  }
+
+  fill(120, 120, 130);
+  textSize(max(10, uiWidth * 0.08));
+  text(`MAX COMBO  ${keyboardMaxCombo}`, uiWidth / 2, height * 0.75);
+}
+
+function keyboardDrawCustomRightUI() {
+  let trackRightEdge = keyboardTRACK_X_OFFSET + keyboardLANE_WIDTH * keyboardLANE_COUNT;
+  let uiWidth = width - trackRightEdge - 10;
+  if (uiWidth <= 0) return;
+
+  fill(15, 15, 25);
+  noStroke();
+  rect(trackRightEdge + 10, 0, uiWidth, height);
+  
+  stroke(255, 0, 128, 40);
+  strokeWeight(2);
+  line(trackRightEdge + 10, 0, trackRightEdge + 10, height);
+
+  let startX = trackRightEdge + 25;
+  let containerWidth = width - startX - 25;
+
+  fill(255, 0, 128, 150);
+  textSize(max(12, uiWidth * 0.1));
+  textAlign(LEFT, TOP);
+  text("PLAYER CAM", startX, height * 0.08);
+
+  let camY = height * 0.13; 
+  
+  if (keyboardVideo && keyboardVideo.loadedmetadata) {
+    let camAspect = keyboardVideo.height / keyboardVideo.width;
+    let camHeight = containerWidth * camAspect;
+    
+    stroke(0, 230, 255, 150);
+    strokeWeight(2);
+    fill(0, 50);
+    rect(startX - 2, camY - 2, containerWidth + 4, camHeight + 4, 4);
+    
+    image(keyboardVideo, startX, camY, containerWidth, camHeight);
+  } else {
+    fill(30);
+    stroke(100);
+    strokeWeight(1);
+    rect(startX, camY, containerWidth, containerWidth * 0.75, 4);
+    
+    fill(150);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(12);
+    text("Loading Camera...", startX + containerWidth / 2, camY + (containerWidth * 0.75) / 2);
+  }
+
+  fill(140, 140, 150);
+  textSize(max(11, uiWidth * 0.08));
+  textAlign(LEFT, TOP);
+  
+  let infoY = height * 0.65;
+  text(`SPEED : ${(keyboardSCROLL_SPEED/100).toFixed(1)}x`, startX, infoY);
+  text(`SYNC  : ${keyboardAUDIO_OFFSET}ms`, startX, infoY + 25);
+  text(`SONG  : Neon Beats (126)`, startX, infoY + 50);
+}
+
+function keyboardDrawBeatLines() {
+  stroke(100, 100, 150, 100);
+  strokeWeight(2);
+  
+  let beatDuration = (60 / keyboardGameBPM) * 4;  
+  let currentMeasure = (keyboardCurrentTime + keyboardAUDIO_OFFSET) / 1000 / beatDuration;
+  let startMeasure = Math.floor(currentMeasure) - 2;
+  
+  let trackWidth = keyboardLANE_WIDTH * keyboardLANE_COUNT;
+  
+  for (let i = startMeasure; i < startMeasure + 15; i++) {
+    let beatTime = i * beatDuration * 1000;
+    let y = keyboardCalcNoteY(beatTime);
+    
+    if (y > -50 && y < keyboardJudgeLine + 100) {
+      if (i % 4 === 0) {
+        stroke(150, 150, 200, 150);
+        strokeWeight(3);
+      } else {
+        stroke(100, 100, 150, 80);
+        strokeWeight(1.5);
+      }
+      line(keyboardTRACK_X_OFFSET, y, keyboardTRACK_X_OFFSET + trackWidth, y);
+    }
+  }
+}
+
+function keyboardDrawLanes() {
+  stroke(80);
+  strokeWeight(2);
+  for (let i = 0; i <= keyboardLANE_COUNT; i++) {
+    let x = keyboardTRACK_X_OFFSET + i * keyboardLANE_WIDTH;
+    line(x, 0, x, keyboardJudgeLine);
+  }
+}
+
+function keyboardDrawJudgmentLine() {
+  let trackWidth = keyboardLANE_WIDTH * keyboardLANE_COUNT;
+  stroke(255, 50, 50);
+  strokeWeight(4);
+  line(keyboardTRACK_X_OFFSET, keyboardJudgeLine, keyboardTRACK_X_OFFSET + trackWidth, keyboardJudgeLine);
+  
+  noStroke();
+  fill(255, 50, 50, 30);
+  rect(keyboardTRACK_X_OFFSET, keyboardJudgeLine - 2, trackWidth, 4);
+}
+
+function keyboardCalcNoteY(noteTime) {
+  let timeDiff = noteTime - (keyboardCurrentTime + keyboardAUDIO_OFFSET);
+  return keyboardJudgeLine - (timeDiff / 1000) * keyboardSCROLL_SPEED;
+}
+
+function keyboardDrawNotes() {
   for (let note of keyboardNotes) {
     if (!note.active) continue;
     
-    // 노트의 Y 좌표 계산 (시간의 흐름에 따라 위에서 아래로 내려옴)
-    let noteY = keyboardJudgeLine - (note.time - keyboardCurrentTime) * (KEYBOARD_CONFIG.SCROLL_SPEED / 1000);
-    let noteX = startX + note.lane * KEYBOARD_CONFIG.LANE_WIDTH + (KEYBOARD_CONFIG.LANE_WIDTH - KEYBOARD_CONFIG.NOTE_WIDTH) / 2;
+    let x = keyboardTRACK_X_OFFSET + note.lane * keyboardLANE_WIDTH + (keyboardLANE_WIDTH - keyboardNOTE_WIDTH) / 2;
     
-    // 화면 위쪽 밖으로 너무 멀리 있는 노트는 렌더링 패스
-    if (noteY < -50) continue;
-    
-    // 판정선을 너무 지나쳐서 완전히 놓친 경우 (MISS 처리 오차범위 250ms)
-    if (keyboardCurrentTime - note.time > 250) {
-      note.active = false;
-      keyboardCombo = 0;
-      keyboardLastJudgment = 'MISS';
-      keyboardJudgmentTime = millis();
-      continue;
-    }
-    
-    // 정상 범위 내의 노트 그리기
-    if (noteY < keyboardJudgeLine + 20) {
-      fill(KEYBOARD_COLOR.NOTE_NORMAL);
-      stroke(255);
-      strokeWeight(1);
-      rect(noteX, noteY - KEYBOARD_CONFIG.NOTE_HEIGHT / 2, KEYBOARD_CONFIG.NOTE_WIDTH, KEYBOARD_CONFIG.NOTE_HEIGHT, 4);
-    }
-  }
-}
-
-function drawKeyboardEffects() {
-  // 폭발 이펙트 등 애니메이션 처리
-  for (let i = keyboardHitEffects.length - 1; i >= 0; i--) {
-    let effect = keyboardHitEffects[i];
-    let elapsed = millis() - effect.startTime;
-    
-    if (elapsed > 300) {
-      keyboardHitEffects.splice(i, 1);
-      continue;
-    }
-    
-    let progress = elapsed / 300;
-    let alpha = lerp(255, 0, progress);
-    
-    fill(effect.color[0], effect.color[1], effect.color[2], alpha * 0.6);
-    noStroke();
-    circle(effect.x, effect.y, KEYBOARD_CONFIG.LANE_WIDTH * (0.5 + progress));
-  }
-}
-
-function drawKeyboardUI() {
-  // 스코어 및 콤보 렌더링
-  fill(255); noStroke(); textAlign(LEFT, TOP); textSize(18);
-  text(`KEYBOARD SCORE: ${keyboardScore}`, width - 250, 30);
-  text(`KEYBOARD COMBO: ${keyboardCombo}`, width - 250, 60);
-  
-  // 판정 팝업 연출 (0.8초간 유지)
-  if (keyboardLastJudgment && millis() - keyboardJudgmentTime < 800) {
-    textAlign(CENTER, CENTER);
-    
-    if (keyboardLastJudgment === 'PERFECT') fill(KEYBOARD_COLOR.PERFECT);
-    else if (keyboardLastJudgment === 'GOOD') fill(KEYBOARD_COLOR.GOOD);
-    else if (keyboardLastJudgment === 'BAD') fill(KEYBOARD_COLOR.BAD);
-    else fill(255, 50, 50); // MISS
-    
-    // 콤보가 늘어날 때 살짝 튕기는 커지는 효과 적용
-    if (keyboardCombo > 0) {
-      keyboardComboScale = lerp(keyboardComboScale, 1.0, 0.1);
-      textSize(40 * keyboardComboScale);
-      text(`${keyboardLastJudgment}\n${keyboardCombo} COMBO`, width / 2 + KEYBOARD_CONFIG.TRACK_X_OFFSET, keyboardJudgeLine - 150);
-    } else {
-      textSize(40);
-      text(keyboardLastJudgment, width / 2 + KEYBOARD_CONFIG.TRACK_X_OFFSET, keyboardJudgeLine - 150);
-    }
-  }
-}
-
-// ============================================
-// ⌨️ 3. 키보드 입력 연동 함수 (메인 타워 중계)
-// ============================================
-function keyboardKeyPressed() {
-  let lane = -1;
-  // 건반형 게임에 매핑할 키 (예시: A, S, D, F, J, K, L, ;)
-  if (key === 'a' || key === 'A') lane = 0;
-  if (key === 's' || key === 'S') lane = 1;
-  if (key === 'd' || key === 'D') lane = 2;
-  if (key === 'f' || key === 'F') lane = 3;
-  if (key === 'j' || key === 'J') lane = 4;
-  if (key === 'k' || key === 'K') lane = 5;
-  if (key === 'l' || key === 'L') lane = 6;
-  if (key === ';')                lane = 7;
-  
-  if (lane !== -1) {
-    keyboardKeyPressEffects[lane] = true;
-    judgeKeyboardInput(lane);
-  }
-}
-
-function keyboardKeyReleased() {
-  let lane = -1;
-  if (key === 'a' || key === 'A') lane = 0;
-  if (key === 's' || key === 'S') lane = 1;
-  if (key === 'd' || key === 'D') lane = 2;
-  if (key === 'f' || key === 'F') lane = 3;
-  if (key === 'j' || key === 'J') lane = 4;
-  if (key === 'k' || key === 'K') lane = 5;
-  if (key === 'l' || key === 'L') lane = 6;
-  if (key === ';')                lane = 7;
-  
-  if (lane !== -1) {
-    keyboardKeyPressEffects[lane] = false;
-  }
-}
-
-function judgeKeyboardInput(lane) {
-  let closestNote = null;
-  let minTimeDiff = Infinity;
-  
-  for (let note of keyboardNotes) {
-    if (note.active && note.lane === lane) {
-      let timeDiff = Math.abs(keyboardCurrentTime - note.time);
-      if (timeDiff < minTimeDiff) {
-        minTimeDiff = timeDiff;
-        closestNote = note;
-      }
-    }
-  }
-  
-  // 기존 코드의 거리 비례 판정을 시간 오차(ms) 기반 판정으로 표준화
-  if (closestNote && minTimeDiff < 220) { 
-    closestNote.active = false;
-    let scoreGain = 0;
-    let effectColor = [255, 255, 255];
-    
-    if (minTimeDiff <= 70) {
-      keyboardLastJudgment = 'PERFECT';
-      effectColor = KEYBOARD_COLOR.PERFECT;
-      scoreGain = 1000;
-      keyboardCombo++;
-      keyboardComboScale = 1.3;
-    } else if (minTimeDiff <= 140) {
-      keyboardLastJudgment = 'GOOD';
-      effectColor = KEYBOARD_COLOR.GOOD;
-      scoreGain = 500;
-      keyboardCombo++;
-      keyboardComboScale = 1.1;
-    } else {
-      keyboardLastJudgment = 'BAD';
-      effectColor = KEYBOARD_COLOR.BAD;
-      scoreGain = 200;
-      keyboardCombo = 0;
-    }
-    
-    keyboardScore += scoreGain;
-    if (keyboardCombo > keyboardMaxCombo) keyboardMaxCombo = keyboardCombo;
-    keyboardJudgmentTime = millis();
-    
-    // 판정선 폭발 이펙트 추가
-    let totalWidth = KEYBOARD_CONFIG.LANE_COUNT * KEYBOARD_CONFIG.LANE_WIDTH;
-    let startX = width / 2 - totalWidth / 2 + KEYBOARD_CONFIG.TRACK_X_OFFSET;
-    let hitX = startX + lane * KEYBOARD_CONFIG.LANE_WIDTH + KEYBOARD_CONFIG.LANE_WIDTH / 2;
-    
-    keyboardHitEffects.push({
-      x: hitX,
-      y: keyboardJudgeLine,
-      color: effectColor,
-      startTime: millis()
-    });
-  }
-}
-
-// 📐 창 크기 변경 시 대응할 스케일 업데이트 함수
-function updateKeyboardGameScale() {
-  keyboardJudgeLine = height - KEYBOARD_CONFIG.JUDGE_LINE_Y_OFFSET;
-}
-
-// 📝 [테스트용] 임시 4마디 무한 반복 스타일 샘플 채보 빌더
-function generateKeyboardSampleNotes() {
-  let baseTime = 2000; // 2초 뒤부터 등장 시작
-  for (let m = 0; m < 16; m++) { // 16마디 분량 예시 생성
-    for (let i = 0; i < 4; i++) {
-      keyboardNotes.push({ time: baseTime, lane: (i * 2) % 8, active: true });
-      baseTime += 476; // 126 BPM 기준 Quarter note 간격 (약 476ms)
-    }
-  }
-}
+    if (note.type === 'short') {
+      let y = keyboardCalcNoteY(note.time);
+      if (y < -50 || y > height + 50) continue;
+      
+      fill(0, 0, 0, 100);
+      noStroke();
+      rect(x + 2, y + 2, keyboardNOTE_WIDTH, keyboardNOTE_HEIGHT, 3);
+      
+      fill(100, 200, 255);
+      stroke
