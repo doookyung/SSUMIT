@@ -1,7 +1,13 @@
+/* style.css */
 html, body {
   margin: 0;
   padding: 0;
+  overflow: hidden; /* 스크롤바가 생겨서 화면이 밀리는 현상 방지 */
+  background-color: #0f0f19; /* 어두운 네온 블루 계열의 베이스 배경색 */
+  font-family: sans-serif;
 }
+
 canvas {
   display: block;
+  margin: 0 auto; /* 화면 중앙 정렬 */
 }
