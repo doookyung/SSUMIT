@@ -404,4 +404,364 @@ function keyboardDrawNotes() {
       rect(x + 2, y + 2, keyboardNOTE_WIDTH, keyboardNOTE_HEIGHT, 3);
       
       fill(100, 200, 255);
-      stroke
+      stroke(150, 220, 255);
+      strokeWeight(2);
+      rect(x, y, keyboardNOTE_WIDTH, keyboardNOTE_HEIGHT, 3);
+    } 
+    else if (note.type === 'hold') {
+      let yStart = keyboardCalcNoteY(note.time);
+      let yEnd = keyboardCalcNoteY(note.endTime);
+      
+      if (yStart < -50 && yEnd < -50) continue;
+      if (yEnd > height + 50 && yStart > height + 50) continue;
+      
+      let yBottom = note.holding ? keyboardJudgeLine : yStart;
+      let yTop = yEnd;
+      
+      if (yBottom > yTop) {
+        fill(100, 200, 255, 100);
+        stroke(150, 220, 255, 180);
+        strokeWeight(2);
+        rect(x, yTop, keyboardNOTE_WIDTH, yBottom - yTop, 5);
+      }
+      
+      if (!note.headHit) {
+        fill(50, 150, 255);
+        stroke(200, 240, 255);
+        strokeWeight(2);
+        rect(x, yStart, keyboardNOTE_WIDTH, keyboardNOTE_HEIGHT, 3);
+      }
+      
+      fill(255, 255, 255, 200);
+      noStroke();
+      rect(x, yEnd, keyboardNOTE_WIDTH, 4, 1);
+    }
+  }
+}
+
+function keyboardCheckMissedNotes() {
+  for (let note of keyboardNotes) {
+    if (note.active && !note.missed) {
+      
+      if (note.type === 'short') {
+        let noteY = keyboardCalcNoteY(note.time);
+        if (noteY > keyboardJudgeLine + 80) {  
+          keyboardTriggerMiss(note, 'MISS (OVER)');
+        }
+      } else if (note.type === 'hold') {
+        let noteY = keyboardCalcNoteY(note.time);
+        if (!note.headHit && noteY > keyboardJudgeLine + 80) {
+          keyboardTriggerMiss(note, 'MISS (OVER)');
+        }
+        else if (note.holding && (keyboardCurrentTime + keyboardAUDIO_OFFSET) >= note.endTime) {
+          note.active = false;
+          note.holding = false;
+          
+          keyboardScore += 1000;
+          keyboardCombo++;
+          if (keyboardCombo > keyboardMaxCombo) keyboardMaxCombo = keyboardCombo;
+          keyboardComboScale = 1.3;
+
+          keyboardLastJudgment = {
+            text: 'PERFECT',
+            note: keyboardGetNoteName(note.lane),
+            key: keyboardGetKeyLabel(note.lane),
+            timing: 'HOLD CLEAR',
+            startScale: 1.2
+          };
+          keyboardJudgmentTime = millis();
+          
+          keyboardHitEffects.push({
+            lane: note.lane,
+            time: millis(),
+            color: [255, 255, 100]
+          });
+        }
+      }
+    }
+  }
+}
+
+function keyboardTriggerMiss(note, reason) {
+  note.active = false;
+  note.missed = true;
+  note.holding = false;
+  
+  keyboardCombo = 0; 
+  
+  keyboardLastJudgment = {
+    text: 'MISS',
+    note: keyboardGetNoteName(note.lane),
+    key: keyboardGetKeyLabel(note.lane),
+    timing: reason,
+    startScale: 1.4 
+  };
+  keyboardJudgmentTime = millis();
+}
+
+function keyboardDrawKeyPressEffects() {
+  for (let i = keyboardKeyPressEffects.length - 1; i >= 0; i--) {
+    let effect = keyboardKeyPressEffects[i];
+    let age = millis() - effect.time;
+    let maxAge = 200;
+    
+    if (age > maxAge) {
+      keyboardKeyPressEffects.splice(i, 1);
+      continue;
+    }
+    
+    let progress = age / maxAge;
+    let alpha = 120 * (1 - progress);
+    
+    fill(100, 200, 255, alpha);
+    noStroke();
+    let pianoY = keyboardJudgeLine;
+    let whiteKeyHeight = keyboardJUDGE_LINE_Y_OFFSET * 0.65;
+    let x = keyboardTRACK_X_OFFSET + effect.lane * keyboardLANE_WIDTH; 
+    rect(x + 2, pianoY, keyboardLANE_WIDTH - 4, whiteKeyHeight);
+  }
+}
+
+function keyboardDrawHitEffects() {
+  for (let i = keyboardHitEffects.length - 1; i >= 0; i--) {
+    let effect = keyboardHitEffects[i];
+    let age = millis() - effect.time;
+    let maxAge = 500;
+    
+    if (age > maxAge) {
+      keyboardHitEffects.splice(i, 1);
+      continue;
+    }
+    
+    let progress = age / maxAge;
+    let alpha = 255 * (1 - progress);
+    let size = keyboardLANE_WIDTH * (0.5 + progress * 1.5);
+    
+    let x = keyboardTRACK_X_OFFSET + effect.lane * keyboardLANE_WIDTH + keyboardLANE_WIDTH / 2; 
+    noFill();
+    stroke(effect.color[0], effect.color[1], effect.color[2], alpha);
+    strokeWeight(3);
+    circle(x, keyboardJudgeLine, size);
+  }
+}
+
+function keyboardDrawWhiteKeys() {
+  let pianoY = keyboardJudgeLine;
+  let whiteKeyHeight = keyboardJUDGE_LINE_Y_OFFSET * 0.65;
+  
+  for (let i = 0; i < keyboardLANE_COUNT; i++) {
+    let x = keyboardTRACK_X_OFFSET + i * keyboardLANE_WIDTH;
+    
+    fill(250);
+    stroke(50);
+    strokeWeight(2);
+    rect(x + 2, pianoY, keyboardLANE_WIDTH - 4, whiteKeyHeight);
+    
+    fill(80);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(keyboardLANE_WIDTH * 0.18);
+    text(keyboardGetKeyLabel(i), x + keyboardLANE_WIDTH / 2, pianoY + whiteKeyHeight - whiteKeyHeight * 0.25); 
+    
+    textSize(keyboardLANE_WIDTH * 0.14);
+    fill(120);
+    text(keyboardGetNoteName(i), x + keyboardLANE_WIDTH / 2, pianoY + whiteKeyHeight * 0.2);
+  }
+}
+
+function keyboardDrawBlackKeys() {
+  let pianoY = keyboardJudgeLine;
+  let whiteKeyHeight = keyboardJUDGE_LINE_Y_OFFSET * 0.65;
+  let blackKeyHeight = whiteKeyHeight * 0.6;
+  
+  keyboardDrawBlackKey(0, pianoY, blackKeyHeight);
+  keyboardDrawBlackKey(1, pianoY, blackKeyHeight);
+  keyboardDrawBlackKey(3, pianoY, blackKeyHeight);
+  keyboardDrawBlackKey(4, pianoY, blackKeyHeight);
+  keyboardDrawBlackKey(5, pianoY, blackKeyHeight);
+}
+
+function keyboardDrawBlackKey(whiteKeyIndex, pianoY, blackKeyHeight) {
+  let x = keyboardTRACK_X_OFFSET + (whiteKeyIndex + 1) * keyboardLANE_WIDTH - keyboardLANE_WIDTH * 0.25;
+  
+  fill(40);
+  stroke(20);
+  strokeWeight(2);
+  rect(x, pianoY, keyboardLANE_WIDTH * 0.5, blackKeyHeight);
+}
+
+function keyboardGetKeyLabel(lane) {
+  const keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O'];
+  return keys[lane];
+}
+
+function keyboardGetNoteName(lane) {
+  const noteNames = ['도', '레', '미', '파', '솔', '라', '시', '도'];
+  return noteNames[lane];
+}
+
+function keyboardDrawInfo() {
+  fill(255, 150);
+  noStroke();
+  textAlign(LEFT, TOP);
+  let fontSize = 12;
+  textSize(fontSize);
+  
+  text(`FPS: ${Math.round(frameRate())}  |  Time: ${(keyboardCurrentTime / 1000).toFixed(2)}s`, 15, 15);
+  
+  if (keyboardLastJudgment && millis() - keyboardJudgmentTime < 1000) {
+    let elapsed = millis() - keyboardJudgmentTime;
+    let duration = 1000; 
+    let currentScale = 1.0;
+    
+    if (elapsed < duration) {
+      let t = elapsed / duration;
+      let easeOutExp = (t === 1) ? 1 : 1 - Math.pow(2, -10 * t);
+      currentScale = 1.0 + (keyboardLastJudgment.startScale - 1.0) * (1 - easeOutExp);
+    }
+    
+    push();
+    translate(width / 2, height / 2 - height * 0.15);
+    scale(currentScale);
+    
+    textAlign(CENTER, CENTER);
+    textSize(width * 0.035);
+    
+    if (keyboardLastJudgment.text === 'PERFECT') fill(255, 255, 100);
+    else if (keyboardLastJudgment.text === 'GOOD') fill(100, 255, 100);
+    else if (keyboardLastJudgment.text === 'BAD') fill(255, 150, 100);
+    else fill(255, 50, 50);
+    
+    text(keyboardLastJudgment.text, 0, 0);
+    pop();
+    
+    textAlign(CENTER, CENTER);
+    textSize(width * 0.018);
+    fill(255, 255, 255, 100);
+    text(`${keyboardLastJudgment.note} (${keyboardLastJudgment.key}) - ${keyboardLastJudgment.timing}`, 
+         width / 2, height / 2 - height * 0.1);
+  }
+}
+
+function keyboardGetLaneFromKey(k) {
+  const upperKey = k.toUpperCase();
+  const keys = ['W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O'];
+  return keys.indexOf(upperKey);
+}
+
+function keyboardKeyPressed() {
+  let lane = keyboardGetLaneFromKey(key);
+  
+  if (lane !== -1) {
+    keyboardHandleInput(lane);
+    keyboardKeyPressEffects.push({
+      lane: lane,
+      time: millis()
+    });
+  }
+}
+
+function keyboardKeyReleased() {
+  let lane = keyboardGetLaneFromKey(key);
+  
+  if (lane !== -1) {
+    for (let note of keyboardNotes) {
+      if (note.lane === lane && note.active && note.type === 'hold' && note.holding) {
+        let noteYEnd = keyboardCalcNoteY(note.endTime);
+        let distFromJudge = Math.abs(keyboardJudgeLine - noteYEnd);
+        
+        if (distFromJudge > 80 && note.endTime > (keyboardCurrentTime + keyboardAUDIO_OFFSET)) {
+          note.active = false;
+          note.holding = false;
+          note.missed = true;
+          
+          keyboardCombo = 0; 
+          
+          keyboardLastJudgment = {
+            text: 'MISS',
+            note: keyboardGetNoteName(lane),
+            key: keyboardGetKeyLabel(lane),
+            timing: 'EARLY RELEASE',
+            startScale: 1.4
+          };
+          keyboardJudgmentTime = millis();
+        } else {
+          note.active = false;
+          note.holding = false;
+        }
+      }
+    }
+  }
+}
+
+function keyboardHandleInput(lane) {
+  let closestNote = null;
+  let minDistDiff = Infinity;
+  
+  for (let note of keyboardNotes) {
+    if (note.lane === lane && note.active) {
+      if (note.type === 'hold' && note.headHit) continue;
+      
+      let noteY = keyboardCalcNoteY(note.time);
+      let distDiff = Math.abs(keyboardJudgeLine - noteY); 
+      
+      if (distDiff < minDistDiff) {
+        minDistDiff = distDiff;
+        closestNote = note;
+      }
+    }
+  }
+  
+  if (closestNote && minDistDiff < 80) {
+    let judgment = '';
+    let effectColor = [255, 255, 255];
+    let scoreGain = 0;
+    
+    if (minDistDiff < 15) {
+      judgment = 'PERFECT';
+      effectColor = [255, 255, 100];
+      scoreGain = 1000;
+      keyboardCombo++;
+    } else if (minDistDiff < 40) {
+      judgment = 'GOOD';
+      effectColor = [100, 255, 100];
+      scoreGain = 500;
+      keyboardCombo++;
+    } else {
+      judgment = 'BAD';
+      effectColor = [255, 150, 100];
+      scoreGain = 200;
+      keyboardCombo = 0;
+    }
+    
+    keyboardScore += scoreGain;
+    if (keyboardCombo > keyboardMaxCombo) keyboardMaxCombo = keyboardCombo;
+    if (scoreGain > 200) keyboardComboScale = 1.35; 
+
+    if (closestNote.type === 'short') {
+      closestNote.active = false; 
+    } else if (closestNote.type === 'hold') {
+      closestNote.headHit = true; 
+      closestNote.holding = true; 
+    }
+    
+    keyboardLastJudgment = {
+      text: judgment,
+      note: keyboardGetNoteName(lane),
+      key: keyboardGetKeyLabel(lane),
+      timing: `${minDistDiff.toFixed(1)}px`, 
+      startScale: 1.2
+    };
+    keyboardJudgmentTime = millis();
+    
+    keyboardHitEffects.push({
+      lane: lane, 
+      time: millis(),
+      color: effectColor
+    });
+  }
+}
+
+function keyboardPlayKeyboard() {
+    console.log("키보드 연주 시작!");
+}
