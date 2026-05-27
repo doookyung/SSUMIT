@@ -195,3 +195,7 @@ function keyPressed() {
     fullscreen(!fs);
   }
 }
+// 화면 어디든 마우스를 클릭하면 메인 게임(index.html)으로 넘어갑니다!
+function mousePressed() {
+  window.location.href = 'index.html';
+}
