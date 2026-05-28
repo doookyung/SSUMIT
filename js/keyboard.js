@@ -62,7 +62,7 @@ function keyboardPreload() {
 }
 
 function keyboardSetup() {
-  createCanvas(windowWidth, windowHeight);
+  // createCanvas(windowWidth, windowHeight);
   keyboardUpdateGameScale();
   if (keyboardFont) textFont(keyboardFont);
   
