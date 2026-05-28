@@ -196,7 +196,7 @@ function drumKeyPressed() {
 
 function drumCheckHit(pressedType) {
   // 메인 타워의 globalTime 연동
-  let currentSongTime = globalTime; 
+  let currentSongTime = globalSongTime; 
   let hitWindowMs = 120; 
 
   for (let i = 0; i < drumNotes.length; i++) {
@@ -285,7 +285,7 @@ function drumDraw() {
   background(20); 
 
   // 메인 파일에서 공유받는 통합 시계 (ms)
-  let currentSongTime = globalTime; 
+  let currentSongTime = globalSongTime; 
 
   push();
   let scaleX = windowWidth / 1000;
