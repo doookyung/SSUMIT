@@ -158,7 +158,7 @@ function drumMousePressed(){
 }
 
 function drumSetup() {
-  createCanvas(windowWidth, windowHeight);
+  // createCanvas(windowWidth, windowHeight);
   drumCapture = createCapture(VIDEO);
   drumCapture.size(400, 150); 
   drumCapture.hide(); 
