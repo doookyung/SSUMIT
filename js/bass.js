@@ -233,7 +233,7 @@ function bassRest(restType) {
 }
 
 function bassSetup() {
-  createCanvas(windowWidth, windowHeight);
+  // createCanvas(windowWidth, windowHeight);
   bassUpdateGameScale();
   if (bassFont) textFont(bassFont);
   
